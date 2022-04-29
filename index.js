@@ -16,12 +16,13 @@ const { Google } = ThirdPartyEmailPassword
 const apiProxy = httpProxy.createProxyServer()
 
 const apiPort = process.env.API_PORT || 3001
-const apiDomain = process.env.API_DOMAIN ? process.env.API_DOMAIN + apiPort : "http://locahost:3001"
-const websiteDomain = process.env.WEBSITE_DOMAIN || "http://localhost:8080"
+const apiDomain = process.env.API_DOMAIN + apiPort
+const websiteDomain = process.env.WEBSITE_DOMAIN
+
+const jonctionfsUri = process.env.JONCTIONFS_URI
 
 const client = redis.createClient({
-    host: '127.0.0.1',
-    port: 6379
+    url: process.env.REDIS_URL
 })
 
 client.connect().catch(err => {
@@ -37,14 +38,15 @@ let google = ThirdPartyEmailPassword.Google({
 supertokens.init({
     framework: "express",
     supertokens: {
-        connectionURI: process.env.SUPERTOKENS_CONNECTION_URI || "http://localhost:3567",
+        connectionURI: process.env.SUPERTOKENS_CONNECTION_URI,
+        apiKey: process.env.SUPERTOKENS_API_KEY
     },
     appInfo: {
         appName: process.env.APP_NAME || "ThinkDrive",
         apiDomain,
         websiteDomain,
-        apiBasePath: "/auth",
-        websiteBasePath: "/auth"
+        apiBasePath: process.env.AUTH_BASE_PATH,
+        websiteBasePath: process.env.WEBSITE_AUTH_BASE_PATH
     },
     recipeList: [
         ThirdPartyEmailPassword.init({
@@ -104,7 +106,7 @@ const app = express()
 
 app.use(
     cors({
-        origin: websiteDomain,
+        origin: apiDomain,
         allowedHeaders: ["content-type", "action", "data-source", "user", "api", ...supertokens.getAllCORSHeaders()],
         methods: ["GET", "PUT", "POST", "DELETE"],
         credentials: true,
@@ -125,13 +127,12 @@ app.get("/auth/logout", verifySession({sessionRequired: process.env.DISABLE_AUTH
 })
 
 app.get("/auth/callback/google", async (req, res) => {
-    res.redirect("http://localhost:3001/#" + req.url)
+    res.redirect(process.env.WEBSITE_DOMAIN + "/#" + req.url)
 })
 
 app.get("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "true"}), async (req, res) => {
     const userId = req.session?.getUserId()
     const keys = await client.sendCommand(['KEYS','*'])
-    console.log(keys)
     const connections = keys.filter((x) => x.startsWith(userId)).map((x) => {
         const start = x.indexOf('_') + 1
         const end = x.lastIndexOf('_')
@@ -175,7 +176,7 @@ app.all("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "
 
         req.headers["provider-credentials"] = JSON.stringify(providerInfo.data)
 
-        apiProxy.web(req, res, {target: "http://localhost:3000"})
+        apiProxy.web(req, res, {target: jonctionfsUri})
     } catch (err) {
         console.error(err)
         res.status(500).end()
@@ -184,7 +185,7 @@ app.all("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "
 
 app.get("/*", (req, res) => {
     try {
-        apiProxy.web(req, res, {target: "http://localhost:8080", headers: {"Access-Control-Allow-Origin": "*"}})
+        apiProxy.web(req, res, {target: process.env.WEBSITE_URL})
     } catch (err) {
         console.error(err)
         res.status(500).end()
