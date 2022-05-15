@@ -4,10 +4,10 @@ const express = require("express")
 const cors = require("cors")
 const helmet = require("helmet")
 const httpProxy = require('http-proxy')
-const redis = require('redis')
 
 const supertokens = require("supertokens-node")
 const Session = require("supertokens-node/recipe/session")
+const UserMetadata = require("supertokens-node/recipe/usermetadata")
 const { verifySession } = require("supertokens-node/recipe/session/framework/express")
 const { middleware, errorHandler } = require("supertokens-node/framework/express")
 const ThirdPartyEmailPassword = require("supertokens-node/recipe/thirdpartyemailpassword")
@@ -20,14 +20,6 @@ const apiDomain = process.env.API_DOMAIN + apiPort
 const websiteDomain = process.env.WEBSITE_DOMAIN
 
 const jonctionfsUri = process.env.JONCTIONFS_URI
-
-const client = redis.createClient({
-    url: process.env.REDIS_URL
-})
-
-client.connect().catch(err => {
-    console.error("Unable to connect to redis", err)
-})
 
 let google = ThirdPartyEmailPassword.Google({
     clientId: process.env.GOOGLE_CLIENT_ID,
@@ -88,9 +80,11 @@ supertokens.init({
                             }
 
                             if (response.status === "OK") {
-                                client.set(response.user.id + '_Google Drive_GoogleDrive', JSON.stringify({data: response.authCodeResponse}), (err, reply) => {
-                                    if (err) console.error(err)
-                                });
+                                if (!(await getServiceData(response.user.id, "Google Drive"))) {
+                                    await addService(response.user.id, "Google Drive", "GoogleDrive", response.authCodeResponse)
+                                } else {
+                                    await editService(response.user.id, "Google Drive", response.authCodeResponse)
+                                }
                             }
                             return response
                         },
@@ -99,6 +93,8 @@ supertokens.init({
             }
         }),
         Session.init(),
+        UserMetadata.init(),
+
     ],
 })
 
@@ -132,37 +128,58 @@ app.get("/auth/callback/google", async (req, res) => {
 
 app.get("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "true"}), async (req, res) => {
     const userId = req.session?.getUserId()
-    const keys = await client.sendCommand(['KEYS','*'])
-    const connections = keys.filter((x) => x.startsWith(userId)).map((x) => {
-        const start = x.indexOf('_') + 1
-        const end = x.lastIndexOf('_')
-        return {
-            id: x.substring(start, end),
-            type: x.substring(end+1)
-        }
-    })
 
-    res.json(connections)
+    const services = await getServices(userId)
+    console.log(services)
+    const servicesNames = services?.map(x => { return {name: x.name, type: x.type}})
+
+    res.json(servicesNames)
 })
 
 app.put("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "true"}), express.json(), async (req, res) => {
+    const userId = req.session?.getUserId()
     const name = req.body.name
     const type = req.body.type
     const data = req.body.data
-    const connectionName = req.session?.getUserId() + '_' + name + '_' + type
-    const existingEntry = await client.get(connectionName)
 
-    if (!!existingEntry) {
-        return new Response('A service with the name name already exists', { status: 400 })
-    }
-
-    client.set(connectionName, JSON.stringify({
-        name,
-        data
-    }))
+    addService(userId, name, type, data)
 
     res.status(201).end()
 })
+
+const addService = async (userId, name, type, data) => {
+    const services = await getServices(userId)
+
+    const existingService = await getServiceData(userId, name)
+
+    if (!!existingService) {
+        throw "Trying to add a service which already exists"
+    }
+
+    const newService = services?.length > 0 ? services.push({name, type, data}) : [{name, type, data}]
+
+    await UserMetadata.updateUserMetadata(userId, { services: newService });
+}
+
+const editService = async (userId, name, data) => {
+    const services = await getServices(userId)
+    const serviceIndex = services.indexOf(x => x.name == name)
+    services[serviceIndex].data = data
+    await UserMetadata.updateUserMetadata(userId, { services });
+}
+
+const getServiceData = async (userId, name) => {
+    const services = await getServices(userId)
+    if (!services) {
+        return null
+    }
+    return services.find(x => x.name == name)
+}
+
+const getServices = async (userId) => {
+    const { metadata } = await UserMetadata.getUserMetadata(userId);
+    return metadata.services
+}
 
 app.all("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "true"}), async (req, res) => {
     try {
@@ -170,9 +187,7 @@ app.all("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "
         req.headers["authenticated-user"] = userId || "My-username"
 
         const providerId = req.headers["provider-id"]
-        const providerType = req.headers["provider-type"]
-        const connectionName = userId + '_' + providerId + '_' + providerType
-        const providerInfo = JSON.parse(await client.get(connectionName))
+        const providerInfo = await getServiceData(userId, providerId)
 
         req.headers["provider-credentials"] = JSON.stringify(providerInfo.data)
 
