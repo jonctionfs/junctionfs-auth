@@ -80,7 +80,8 @@ supertokens.init({
                             }
 
                             if (response.status === "OK") {
-                                if (!(await getServiceData(response.user.id, "Google Drive"))) {
+                                let googleServiceData = await getServiceData(response.user.id, "Google Drive")
+                                if (!googleServiceData) {
                                     await addService(response.user.id, "Google Drive", "GoogleDrive", response.authCodeResponse)
                                 } else {
                                     await editService(response.user.id, "Google Drive", response.authCodeResponse)
@@ -147,22 +148,27 @@ app.put("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "
 })
 
 const addService = async (userId, name, type, data) => {
-    const services = await getServices(userId)
+    let services = await getServices(userId)
 
-    const existingService = getServiceData(userId, name)
+    const existingService = await getServiceData(userId, name)
 
     if (!!existingService) {
         throw "Trying to add a service which already exists"
     }
 
-    const newService = services?.length > 0 ? services.push({name, type, data}) : [{name, type, data}]
+    if (!services.length) {
+        services = []
+    }
 
-    await UserMetadata.updateUserMetadata(userId, { services: newService });
+    services.push({name, type, data})
+
+    await UserMetadata.updateUserMetadata(userId, { services });
+
 }
 
 const editService = async (userId, name, data) => {
     const services = await getServices(userId)
-    const serviceIndex = services.indexOf(x => x.name == name)
+    const serviceIndex = services.findIndex(x => x.name == name)
     services[serviceIndex].data = data
     await UserMetadata.updateUserMetadata(userId, { services });
 }
@@ -176,7 +182,15 @@ const getServiceData = async (userId, name) => {
 }
 
 const getServices = async (userId) => {
-    const { metadata } = await UserMetadata.getUserMetadata(userId);
+    let { metadata } = await UserMetadata.getUserMetadata(userId)
+
+    // Temporary fix since sometimes the services becomes a number
+    if (typeof metadata.services == "number") {
+        console.log("services was a number. Updating to an array")
+        UserMetadata.updateUserMetadata(userId, { services: [] })
+        metadata = (await UserMetadata.getUserMetadata(userId)).metadata;
+    }
+
     return metadata.services
 }
 
