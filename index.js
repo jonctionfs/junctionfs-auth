@@ -4,6 +4,8 @@ const express = require("express")
 const cors = require("cors")
 const helmet = require("helmet")
 const httpProxy = require('http-proxy')
+const multer = require('multer')
+const fetch = require('node-fetch')
 
 const supertokens = require("supertokens-node")
 const Session = require("supertokens-node/recipe/session")
@@ -26,6 +28,9 @@ let google = ThirdPartyEmailPassword.Google({
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     scope: ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/userinfo.email"],
 });
+
+const storage = multer.memoryStorage()
+const upload = multer({ dest: 'uploads/', storage })
 
 supertokens.init({
     framework: "express",
@@ -117,6 +122,20 @@ app.use(
 )
 
 app.use(middleware())
+
+app.post("/upload/google-drive/*", upload.single('Media'), async (req, res) => {
+    const googleUrl = req.url.substring(21)
+
+    const googleRes = fetch(googleUrl, {
+        method: "PUT",
+        headers: {
+            "Content-Length": req.headers["content-length"]
+        },
+        body: req.file.buffer
+    })
+
+    res.status((await googleRes).status).end()
+})
 
 app.get("/auth/logout", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "true"}), async (req, res) => {
     await req.session.revokeSession()
