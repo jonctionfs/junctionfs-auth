@@ -156,7 +156,7 @@ const addService = async (userId, name, type, data) => {
         throw "Trying to add a service which already exists"
     }
 
-    if (!services.length) {
+    if (!services?.length) {
         services = []
     }
 
