@@ -13,7 +13,6 @@ const UserMetadata = require("supertokens-node/recipe/usermetadata")
 const { verifySession } = require("supertokens-node/recipe/session/framework/express")
 const { middleware, errorHandler } = require("supertokens-node/framework/express")
 const ThirdPartyEmailPassword = require("supertokens-node/recipe/thirdpartyemailpassword")
-const { Google } = ThirdPartyEmailPassword
 
 const apiProxy = httpProxy.createProxyServer()
 
@@ -150,7 +149,6 @@ app.get("/api/*", verifySession({sessionRequired: process.env.DISABLE_AUTH !== "
     const userId = req.session?.getUserId()
 
     const services = await getServices(userId)
-    console.log(services)
     const servicesNames = services?.map(x => { return {name: x.name, type: x.type}})
 
     res.json(servicesNames)
@@ -205,7 +203,7 @@ const getServices = async (userId) => {
 
     // Temporary fix since sometimes the services becomes a number
     if (typeof metadata.services == "number") {
-        console.log("services was a number. Updating to an array")
+        console.warn("services was a number. Updating to an array")
         UserMetadata.updateUserMetadata(userId, { services: [] })
         metadata = (await UserMetadata.getUserMetadata(userId)).metadata;
     }
