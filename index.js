@@ -1,18 +1,18 @@
-require("dotenv").config()
+import 'dotenv/config'
 
-const express = require("express")
-const cors = require("cors")
-const helmet = require("helmet")
-const httpProxy = require('http-proxy')
-const multer = require('multer')
-const fetch = require('node-fetch')
+import express from "express"
+import cors from "cors"
+import helmet from "helmet"
+import httpProxy from 'http-proxy'
+import multer from 'multer'
+import fetch from 'node-fetch'
 
-const supertokens = require("supertokens-node")
-const Session = require("supertokens-node/recipe/session")
-const UserMetadata = require("supertokens-node/recipe/usermetadata")
-const { verifySession } = require("supertokens-node/recipe/session/framework/express")
-const { middleware, errorHandler } = require("supertokens-node/framework/express")
-const ThirdPartyEmailPassword = require("supertokens-node/recipe/thirdpartyemailpassword")
+import supertokens from "supertokens-node"
+import Session from "supertokens-node/recipe/session/index.js"
+import UserMetadata from "supertokens-node/recipe/usermetadata/index.js"
+import { verifySession } from "supertokens-node/recipe/session/framework/express/index.js"
+import { middleware, errorHandler } from "supertokens-node/framework/express/index.js"
+import ThirdPartyEmailPassword from "supertokens-node/recipe/thirdpartyemailpassword/index.js"
 
 const apiProxy = httpProxy.createProxyServer()
 
